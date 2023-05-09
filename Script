@@ -1,0 +1,93 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Preliminary script for mapping immunogenic epitopes in a given sequence and producing output data. Outputs include the total number of instances of immunogenic epitopes being found in the query sequence (to inform on the potential immune response against a therapeutic sequence), as well as an optional output of a concatamer of the most commonly mapped regions of the query sequence (for T-cell vaccine manufacture)
+"""
+
+import argparse
+import textwrap
+import pandas as pd
+from Bio import SeqIO
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument("-i1", "--input_peptide", type=argparse.FileType('r'),
+                    help="input filename containing a peptide sequence for protein of interest"
+                    , required=True)
+parser.add_argument("-i2", "--input_epitopes", type=argparse.FileType('r'),
+                    help="input filename containing csv file of all immunogenic epitopes, derived from IEBD search and export"
+                    , required=True)
+parser.add_argument("-n1", "--number1", type=int,
+                    help="number of windows to split sequence into"
+                    , required=True)
+parser.add_argument("-n2", "--number2", type=int,
+                    help="length of output peptide in amino acids"
+                    , required=False)
+parser.add_argument("-o1", "--output1", type=argparse.FileType('w'),
+                     help="output filename for excel file of peptide window hits", required=False)
+parser.add_argument("-o2", "--output2", type=argparse.FileType('w'),
+                     help="output filename for synthetic peptide", required=False)
+args = parser.parse_args()
+
+
+'''the first step is to load the input peptide and create a DataFrame containing all HCV T-cell epitopes and associated data'''
+input_peptide = SeqIO.read(args.input_peptide, 'fasta')
+input_peptide_str = str(input_peptide.seq)
+df = pd.read_csv(args.input_epitopes) # this should be the file containing data
+
+'''
+the next step is to load a DataFrame containing all HCV T-cell epitopes and associated data
+the peptide sequences are usually placed in column called Epitope.2. The correct titles appear to be located in row 1
+Switch the names of the columns for the values in row 1. Additionally, change the name of the column containing the peptide sequences to ‘Peptide’
+'''
+df2 = df.drop(columns=['Epitope.3', 'Epitope.4', 'Epitope.7', 'Epitope.8', 'Related Object.1', 'Related Object.2', 'Related Object.3', 'Related Object.4', 'Related Object.5', 'Related Object.6', 'Related Object.7', 'Related Object.8', 'Related Object.9', 'Epitope.16', 'Related Object', 'Related Object.10']) # removes the empty columns from the dataframe
+df2 = df2.rename(columns=df2.iloc[0]) # creates a new dataframe where the column names are now contents of first row
+df2 = df2.drop(df2.index[0]) # removes first row for simplicity
+df2 = df2.rename(columns={'Description': 'Peptide'}) # changes the name of that column to ‘Peptide’ for simplicity
+
+'''
+next, split sequence into windows, find out how many of the epitopes in the DataFrame map successfully to the input sequence and save data to lists
+'''
+windows = textwrap.wrap(input_peptide_str, int(len(input_peptide_str)/(args.number1)))
+peptides = []
+frequency = []
+ind = []
+for i, line in enumerate(windows):
+    count = 0
+    for x in df2['Peptide'].values:
+        if x in line:
+            count+=1
+    peptides.append(line)
+    frequency.append(count)
+    ind.append(i)
+print("Epitopes appear in sequence %i times" % sum(frequency))
+
+'''
+next, generate a DataFrame containing and export this DataFrame as an excel file for analysis and return a total number of hits.
+'''
+dic = {'window':peptides, 'count':frequency, 'window_index':ind}
+df3 = pd.DataFrame(dic, columns=['window','count', 'window_index'])
+df3.to_csv(args.output1)
+print("Output excel file contains %i records" % len(df3))
+
+if args.number2 == None or args.output2 == None:
+    print("No more arguments supplied, sayonara")
+    exit()
+
+'''
+then filter the list to isolate the windows that contain the greatest number of hits and concatenate them to generate a synthetic sequence for vaccine purposes. Write this peptide sequence to a fasta file.
+'''
+df3_sorted = df3.sort_values(by=['count'], ascending=False, ignore_index=True)
+n2r = int((args.number2)/len(windows[0])) #number of sequences to concatenate, based on final length of peptide, as specified by user
+group = df3_sorted[:n2r]
+group_sorted = group.sort_values(by=['window_index'], ascending=True, ignore_index=True)
+
+out_pep=''
+for record in group_sorted['window'].values:
+    out_pep = out_pep+str(record)
+
+out_pep_output = SeqRecord(Seq(out_pep), 'Synthesis_output')#this isnt working
+SeqIO.write(out_pep_output, args.output2, 'fasta')
+print("Output consensus length = %i" % len(out_pep_output))
