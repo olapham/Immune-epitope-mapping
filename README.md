@@ -8,8 +8,7 @@ The way to execute the script is to:
 
 2. Open your Mac terminal app
 
-3. In the terminal, navigate to the directory containing the files using the cd command. Eg, if the files were on my desktop I’d type
-cd /Users/johncounsell/Desktop
+3. In the terminal, navigate to the directory containing the files using the cd command. 
 
 4. Now you can instruct the system to run the script on the input files and create an output sequence, by entering the command
 python Immune_epitope_map.py -i1 bole1a.fa -i2 epitope_table_export_1675018680.csv -n1 50 -n2 1000 -o1 bole1a_hits_1w.csv -o2 bole1a_Tcell_polypeptide.fa
